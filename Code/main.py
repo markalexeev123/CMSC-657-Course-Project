@@ -107,7 +107,7 @@ def evaluate_strang_step_and_bounds(A, B, U_exact, metrics, t, r):
     # Exact spectral norm error: ||exp(-iHt) - S_2(tau)^r||_2
     exact_error = norm(U_exact - U_trotter, 2)
 
-    # Childs et al. (2021) Commutator Upper Bound (uncapped; raw-error plots cap it at the trivial unitary bound 2.0)
+    # Childs et al. (2021) Commutator Upper Bound (uncapped; raw-error plots cap it and the estimate below at 2.0)
     # Source: Childs 04 (r steps)
     upper_bound = r * tau ** 3 * metrics["childs_upper_coeff"]
 
@@ -123,7 +123,7 @@ def normalize_or_cap(curves, scale, mask_threshold, normalize):
     curves: 3xN array (upper_bounds, exact_errors, asymptotic_estimates). If normalize, divides every curve by
     scale = r * tau^3 and hides all three curves wherever the raw upper bound exceeds mask_threshold,
     i.e. outside the perturbative regime where r * tau^3 scaling cannot hold yet; otherwise caps the upper bound
-    at the trivial unitary bound 2.0.
+    and the asymptotic estimate at the trivial unitary bound 2.0 (the exact error never exceeds it).
     """
     if normalize:
         # Masking source: Childs 04 (bound works well only for small t), Hahn 01, Hahn 02 (when a bound is trivial)
@@ -132,7 +132,9 @@ def normalize_or_cap(curves, scale, mask_threshold, normalize):
         curves[:, outside] = np.nan           # matplotlib leaves gaps at NaN
         return curves
     else:
-        curves[0] = np.minimum(curves[0], 2.0)  # cap upper bound at trivial unitary bound. Source: Chen 03 (errors saturate at 2)
+        # Cap upper bound and asymptotic estimate at the trivial unitary bound; uncapped, the estimate reaches
+        # ~20-100 at r = 1 or large t (n = 10) and squashes the log-scale plot. Source: Chen 03 (errors saturate at 2)
+        curves[[0, 2]] = np.minimum(curves[[0, 2]], 2.0)
     return curves
 
 # Plotting
@@ -141,7 +143,8 @@ def plot_bounds_figure(x, panels, xlabel, ylabel, title, save_path, logx, logy, 
     Builds and saves a 1xN figure, one panel per (panel_title, (upper_bounds, exact_errors, asymptotic_estimates))
     in `panels`; panel_title may be None. logx / logy set log scale per axis; xticks may be None.
     normalized labels the asymptotic curve as ||C_3|| (curves divided by r * tau^3) instead of r * tau^3 * ||C_3||.
-    mask_threshold: if given and normalized, a note below the panels states the masking criterion; None for no note.
+    mask_threshold: if given and normalized, a note below the panels states the masking criterion whenever any point
+    was masked (NaN); None for no note.
     """
     asymp_formula = r"\|C_3\|" if normalized else r"r\tau^3 \, \|C_3\|"
     curve_styles = (("r--", "Childs et al. Upper Bound"), ("k-", "Exact Spectral Error"), ("b:", f"Asymptotic Leading Term (${asymp_formula}$)"))
@@ -162,7 +165,8 @@ def plot_bounds_figure(x, panels, xlabel, ylabel, title, save_path, logx, logy, 
     axes[0].set_ylabel(ylabel, fontsize=11)
     axes[0].legend(fontsize=9.5)
     fig.suptitle(title, fontsize=12)
-    if normalized and mask_threshold is not None:
+    masked_any = any(np.isnan(curves).any() for _, curves in panels)
+    if normalized and mask_threshold is not None and masked_any:
         footnote = f"Points with $r\\tau^3\\cdot$(Childs coefficient) $> {mask_threshold:g}$ omitted (non-perturbative regime)"
         fig.text(0.5, 0.01, footnote, ha="center", va="bottom", fontsize=9.5, style="italic")
         fig.tight_layout(rect=(0, 0.05, 1, 1))  # leave room at the bottom for the footnote
@@ -248,7 +252,7 @@ def system_size_scaling(n_list, Jx, Jy, Jz, t, r, mask_threshold, normalize, sav
     curves = normalize_or_cap(np.array([upper_bounds, exact_errors, asymptotic_estimates]), r * tau ** 3, mask_threshold, normalize)
 
     ylabel = "Spectral Norm Error $/\\, (r\\tau^3)$" if normalize else "Spectral Norm Error"
-    plot_bounds_figure(n_list, [(None, curves)], "Number of Spins ($n$)", ylabel, f"System-Size Scaling at Fixed Step Size ($t={t}, r={r}, \\tau={tau:g}$)", save_path, logx=False, logy=False, xticks=n_list, normalized=normalize, mask_threshold=None)
+    plot_bounds_figure(n_list, [(None, curves)], "Number of Spins ($n$)", ylabel, f"System-Size Scaling at Fixed Step Size ($t={t}, r={r}, \\tau={tau:g}$)", save_path, logx=False, logy=False, xticks=n_list, normalized=normalize, mask_threshold=mask_threshold)
 
 if __name__ == "__main__":
     n = 10                     # chain length for r_sweep and t_sweep
